@@ -20,39 +20,19 @@ that are verifiable against real evidence survive.
 
 
 def review_contract(spec: dict, ai) -> list[dict]:
-    """Level 1 -- return only findings supported by the OpenAPI contract.
-
-    ai.ask("contract_review", spec) returns a list like:
-        [
-          {
-            "id": "AUTH-001",
-            "claim": "GET /orders has no authentication requirement.",
-            "path": "/orders",
-            "method": "get",
-            "evidence_pointer": "/paths/~1orders/get"
-          },
-          ...
-          {
-            "id": "SEC-001",
-            "claim": "DELETE /customers is publicly accessible.",
-            "path": "/customers",
-            "method": "delete",
-            "evidence_pointer": "/paths/~1customers/delete"
-          }
-        ]
-
-    Compare each finding against the OpenAPI v1 document in
-    data/openapi-v1.json (same spec as http://localhost:8081/api/v1).
-
-    Tip: check two things for each finding before keeping it.
-      1. Does spec["paths"][finding["path"]][finding["method"]] exist?
-      2. Does the evidence_pointer resolve to a real location inside spec?
-         JSON Pointer: split on "/" first, then decode ~1 to "/" inside a key.
-         "/paths/~1orders/get" is spec["paths"]["/orders"]["get"].
-         It is not "//orders" -- the slash belongs to the key name "/orders".
-    """
-    return ai.ask("contract_review", spec)
-
+    findings = ai.ask("contract_review", spec)
+    
+    # Add this verification loop:
+    verified = []
+    for finding in findings:
+        path = finding["path"]
+        method = finding["method"]
+        
+        # Step 1: Does the endpoint exist?
+        if path in spec["paths"] and method in spec["paths"][path]:
+            verified.append(finding)
+    
+    return verified
 
 def design_negative_tests(spec: dict, ai) -> list[dict]:
     """Level 2 -- return runnable test ideas for operations that really exist.
