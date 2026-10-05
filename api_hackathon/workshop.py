@@ -35,38 +35,33 @@ def review_contract(spec: dict, ai) -> list[dict]:
     return verified
 
 def design_negative_tests(spec: dict, ai) -> list[dict]:
-    """Level 2 -- return runnable test ideas for operations that really exist.
-
-    ai.ask("negative_tests", spec) returns a list like:
-        [
-          {
-            "name": "zero limit",
-            "method": "get",
-            "path": "/orders",
-            "input": {"limit": 0},
-            "expected_status": 400
-          },
-          ...
-          {
-            "name": "delete customer record",
-            "method": "delete",
-            "path": "/customers/c-1",
-            "input": {},
-            "expected_status": 204
-          }
-        ]
-
-    Compare each test case against the OpenAPI v1 document in
-    data/openapi-v1.json (same spec as http://localhost:8081/api/v1).
-
-    Tip: keep a test case only if ALL of these are true.
-      1. spec["paths"][case["path"]][case["method"]] exists.
-      2. expected_status is one of 400, 401, 403, 404, 409, or 422.
-         A 204 from a non-existent endpoint is a red flag.
-      3. The case has all required fields: name, method, path, input,
-         expected_status.
-    """
-    return ai.ask("negative_tests", spec)
+    """Level 2 -- return runnable test ideas for operations that really exist."""
+    
+    cases = ai.ask("negative_tests", spec)
+    valid_statuses = {400, 401, 403, 404, 409, 422}
+    filtered = []
+    
+    for case in cases:
+        # Check 1: All required fields present
+        if not all(k in case for k in ["name", "method", "path", "input", "expected_status"]):
+            continue
+        
+        # Check 2: Expected status is valid
+        if case["expected_status"] not in valid_statuses:
+            continue
+        
+        # Check 3: Path and method exist in spec
+        path = case["path"]
+        method = case["method"].lower()
+        
+        if path not in spec.get("paths", {}):
+            continue
+        if method not in spec["paths"][path]:
+            continue
+        
+        filtered.append(case)
+    
+    return filtered
 
 
 def diagnose_incident(logs: str, ai) -> dict:
