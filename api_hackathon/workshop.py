@@ -104,43 +104,42 @@ def diagnose_incident(logs: str, ai) -> dict:
 
 
 def review_migration(v1: dict, v2: dict, ai) -> list[dict]:
-    """Level 4 -- return only breaking changes proven by the two contracts.
-
-    ai.ask("migration_review", {...}) returns a list like:
-        [
-          {
-            "id": "BREAK-POST",
-            "claim": "POST /orders was removed in v2.",
-            "kind": "operation_removed",
-            "path": "/orders",
-            "method": "post"
-          },
-          {
-            "id": "BREAK-LIMIT",
-            "claim": "The limit query parameter became required.",
-            "kind": "parameter_became_required",
-            "path": "/orders",
-            "method": "get",
-            "parameter": "limit"
-          },
-          {
-            "id": "BREAK-003",
-            "claim": "orderId changed from integer to string.",
-            "kind": "schema_changed",
-            "path": "/orders/{orderId}",
-            "method": "get",
-            "parameter": "orderId"
-          }
-        ]
-
-    Compare each claim against data/openapi-v1.json and data/openapi-v2.json
-    (Swagger: http://localhost:8081/api/v1 and http://localhost:8081/api/v2).
-
-    Verify each change by comparing v1 and v2 directly.
-      "operation_removed"       -- operation exists in v1 but not in v2.
-      "parameter_became_required" -- parameter.required is False in v1
-                                     and True in v2.
-      "schema_changed"          -- parameter["schema"] differs between v1 and v2.
-                                   If the schemas are identical the claim is false.
-    """
-    return ai.ask("migration_review", {"v1": v1, "v2": v2})
+    """Level 4 -- return only breaking changes proven by the two contracts."""
+    findings = ai.ask("migration_review", {"v1": v1, "v2": v2})
+    verified = []
+    
+    for finding in findings:
+        path = finding["path"]
+        method = finding["method"].lower()
+        kind = finding["kind"]
+        
+        # Check if endpoint exists in the specs
+        v1_op = v1.get("paths", {}).get(path, {}).get(method)
+        v2_op = v2.get("paths", {}).get(path, {}).get(method)
+        
+        if kind == "operation_removed":
+            if v1_op and not v2_op:
+                verified.append(finding)
+        
+        elif kind == "parameter_became_required":
+            param_name = finding["parameter"]
+            v1_param = next((p for p in v1_op.get("parameters", []) 
+                           if p["name"] == param_name), None)
+            v2_param = next((p for p in v2_op.get("parameters", []) 
+                           if p["name"] == param_name), None)
+            
+            if v1_param and v2_param and not v1_param.get("required") and v2_param.get("required"):
+                verified.append(finding)
+        
+        elif kind == "schema_changed":
+            param_name = finding["parameter"]
+            v1_param = next((p for p in v1_op.get("parameters", []) 
+                           if p["name"] == param_name), None)
+            v2_param = next((p for p in v2_op.get("parameters", []) 
+                           if p["name"] == param_name), None)
+            
+            # Only add if schemas actually differ
+            if v1_param and v2_param and v1_param.get("schema") != v2_param.get("schema"):
+                verified.append(finding)
+    
+    return verified
